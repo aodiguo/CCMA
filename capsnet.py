@@ -1,22 +1,12 @@
-"""
-
-作者:GUO
-日期：2022年09月26日
-"""
 import torch
 import torch.nn as nn
-from models.modulator import Modulator
-import models.efficientface
-from models.transformer_timm import AttentionBlock, Attention
-
 from torch.optim import Adam
 import torch.nn.functional as F
-from torchvision import transforms, datasets
 import time
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-# Sqush激活函数
+
 def squash(inputs, axis=-1):
     """
     The non-linear activation used in Capsule. It drives the length of a large vector to near 1 and small vector to 0
@@ -27,26 +17,6 @@ def squash(inputs, axis=-1):
     norm = torch.norm(inputs, p=2, dim=axis, keepdim=True)
     scale = norm**2 / (1 + norm**2) / (norm + 1e-8)
     return scale * inputs
-
-# PrimaryCapsule
-class PrimaryCapsule(nn.Module):
-    """
-    Apply Conv2D with `out_channels` and then reshape to get capsules
-    :param in_channels: input channels
-    :param out_channels: output channels
-    :param dim_caps: dimension of capsule
-    :param kernel_size: kernel size
-    :return: output tensor, size=[batch, num_caps, dim_caps]
-    """
-    def __init__(self, in_channels, out_channels, dim_caps, kernel_size, stride=1, padding=0):
-        super(PrimaryCapsule, self).__init__()
-        self.dim_caps = dim_caps
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding)
-
-    def forward(self, x):
-        outputs = self.conv2d(x)
-        outputs = outputs.view(x.size(0), -1, self.dim_caps)
-        return squash(outputs)
 
 # DenseCapsule
 class DenseCapsule(nn.Module):
@@ -101,44 +71,9 @@ class DenseCapsule(nn.Module):
                 # => b.size          =[batch, out_num_caps, in_num_caps]
                 # print(b.is_cuda, outputs.is_cuda, x_hat.is_cuda)
                 b = b + torch.sum(outputs * x_hat_detached, dim=-1).to(device)
-
         return torch.squeeze(outputs, dim=-2)
 
-# CapsuleNet
-class CapsuleNet_l(nn.Module):
-    """
-    A Capsule Network on MNIST.
-    :param input_size: data size = [channels, width, height]
-    :param classes: number of classes
-    :param routings: number of routing iterations
-    Shape:
-        - Input: (batch, channels, width, height), optional (batch, classes) .
-        - Output:((batch, classes), (batch, channels, width, height))
-    """
-
-    def __init__(self, in_num_caps, in_dim_caps, classes, out_dim_caps, routings):
-        super(CapsuleNet_l, self).__init__()
-        self.classes = classes
-        self.routings = routings
-
-        # Layer 1: Just a conventional Conv2D layer
-
-
-        # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_caps, dim_caps]
-
-
-        # Layer 3: Capsule layer. Routing algorithm works here.
-        self.digitcaps = DenseCapsule(in_num_caps=in_num_caps, in_dim_caps=in_dim_caps,
-                                      out_num_caps=classes, out_dim_caps=out_dim_caps, routings=routings)
-
-        self.relu = nn.ReLU()
-
-    def forward(self, x, y=None):
-        x = self.digitcaps(x)
-        length = x.norm(dim=-1)
-        return length
-        
-        
+# CapsuleNe
 class CapsuleNet(nn.Module):
     """
     A Capsule Network on MNIST.
@@ -154,13 +89,8 @@ class CapsuleNet(nn.Module):
         super(CapsuleNet, self).__init__()
         self.classes = classes
         self.routings = routings
-
-        # Layer 1: Just a conventional Conv2D layer
-        # Layer 2: Conv2D layer with `squash` activation, then reshape to [None, num_caps, dim_caps]
-        # Layer 3: Capsule layer. Routing algorithm works here.
         self.digitcaps = DenseCapsule(in_num_caps=in_num_caps, in_dim_caps=in_dim_caps,
                                       out_num_caps=classes, out_dim_caps=out_dim_caps, routings=routings)
-
         self.relu = nn.ReLU()
 
     def forward(self, x, y=None):
